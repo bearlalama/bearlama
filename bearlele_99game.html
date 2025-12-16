@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>九九乘法練習遊戲</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        const Icon = ({ type, className = "w-6 h-6" }) => {
+            const icons = {
+                star: <svg className={className} fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>,
+                clock: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>,
+                trophy: <svg className={className} fill="currentColor" viewBox="0 0 24 24"><path d="M6 2h12v5a6 6 0 01-12 0V2zm-3 7h2a4 4 0 008 0h2a4 4 0 008 0h2v2a8 8 0 01-8 8h-4a8 8 0 01-8-8V9zm9 11v3m-4 0h8"/></svg>,
+                play: <svg className={className} fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>,
+                user: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+                chart: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 3v18h18M9 17V9m6 8V5"/></svg>,
+                down: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M23 18l-9.5-9.5-5 5L1 6M17 18h6v-6"/></svg>,
+                calendar: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            };
+            return icons[type] || null;
+        };
+
+        function App() {
+            const [state, setState] = useState('welcome');
+            const [name, setName] = useState('');
+            const [tempName, setTempName] = useState('');
+            const [timeLimit, setTimeLimit] = useState(60);
+            const [timeLeft, setTimeLeft] = useState(60);
+            const [score, setScore] = useState(0);
+            const [question, setQuestion] = useState({ num1: 0, num2: 0 });
+            const [answer, setAnswer] = useState('');
+            const [feedback, setFeedback] = useState('');
+            const [total, setTotal] = useState(0);
+            const [scores, setScores] = useState({});
+            const [highScores, setHighScores] = useState({});
+            const [type, setType] = useState('all');
+
+            const typeNames = {
+                all: '全部題目', '2': '2的倍數', '3': '3的倍數', '4': '4的倍數',
+                '5': '5的倍數', '6': '6的倍數', '7': '7的倍數', '8': '8的倍數',
+                '9': '9的倍數', even: '偶數的倍數', '235': '2,3,5的倍數'
+            };
+
+            // 計算獎勵徽章
+            const getBadges = () => {
+                const badges = {};
+                const checkType = (typeValue, label) => {
+                    const qs = [];
+                    for (let i = 1; i <= 9; i++) {
+                        for (let j = 1; j <= 9; j++) {
+                            if (typeValue === 'all' || 
+                                (typeValue === 'even' && ([2,4,6,8].includes(i) || [2,4,6,8].includes(j))) ||
+                                (typeValue === '235' && ([2,3,5].includes(i) || [2,3,5].includes(j))) ||
+                                (i === parseInt(typeValue) || j === parseInt(typeValue))) {
+                                qs.push(`${i}x${j}`);
+                            }
+                        }
+                    }
+                    const allScores = qs.map(q => scores[q] || 50);
+                    const minScore = Math.min(...allScores);
+                    if (minScore >= 100) return { level: 3, badge: '💯', name: '滿分獎' };
+                    if (minScore >= 90) return { level: 2, badge: '🏅', name: '精通獎' };
+                    if (minScore >= 80) return { level: 1, badge: '⭐', name: '優秀獎' };
+                    return null;
+                };
+                
+                ['all', '2', '3', '4', '5', '6', '7', '8', '9', 'even', '235'].forEach(t => {
+                    const result = checkType(t, typeNames[t]);
+                    if (result) badges[t] = result;
+                });
+                return badges;
+            };
+
+            const [badges, setBadges] = useState({});
+            const [showHelp, setShowHelp] = useState(false);
+
+            useEffect(() => {
+                if (name) {
+                    const saved = localStorage.getItem(`scores_${name}`);
+                    const savedHS = localStorage.getItem(`highscores_${name}`);
+                    if (saved) setScores(JSON.parse(saved));
+                    else {
+                        const init = {};
+                        for (let i = 1; i <= 9; i++) for (let j = 1; j <= 9; j++) init[`${i}x${j}`] = 50;
+                        setScores(init);
+                    }
+                    if (savedHS) setHighScores(JSON.parse(savedHS));
+                    setBadges(getBadges());
+                }
+            }, [name]);
+
+            useEffect(() => {
+                if (name && Object.keys(scores).length > 0) {
+                    localStorage.setItem(`scores_${name}`, JSON.stringify(scores));
+                    setBadges(getBadges());
+                }
+            }, [scores]);
+
+            useEffect(() => {
+                if (name && Object.keys(highScores).length > 0) localStorage.setItem(`highscores_${name}`, JSON.stringify(highScores));
+            }, [highScores]);
+
+            const getQuestions = () => {
+                const all = [];
+                for (let i = 1; i <= 9; i++) for (let j = 1; j <= 9; j++) all.push({ num1: i, num2: j });
+                if (type === 'all') return all;
+                if (type === 'even') return all.filter(q => [2,4,6,8].includes(q.num1) || [2,4,6,8].includes(q.num2));
+                if (type === '235') return all.filter(q => [2,3,5].includes(q.num1) || [2,3,5].includes(q.num2));
+                const n = parseInt(type);
+                return all.filter(q => q.num1 === n || q.num2 === n);
+            };
+
+            const genQuestion = () => {
+                const qs = getQuestions();
+                const weights = qs.map(q => Math.max(1, 101 - (scores[`${q.num1}x${q.num2}`] || 50)));
+                const total = weights.reduce((a, b) => a + b, 0);
+                let r = Math.random() * total;
+                for (let i = 0; i < weights.length; i++) {
+                    r -= weights[i];
+                    if (r <= 0) { setQuestion(qs[i]); setAnswer(''); setFeedback(''); return; }
+                }
+            };
+
+            const start = () => { setState('playing'); setScore(0); setTotal(0); setTimeLeft(timeLimit); genQuestion(); };
+
+            useEffect(() => {
+                if (state === 'playing' && timeLeft > 0) {
+                    const t = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+                    return () => clearTimeout(t);
+                } else if (timeLeft === 0 && state === 'playing') {
+                    const curr = highScores[type];
+                    if (!curr || score > curr.score) {
+                        const newHS = { ...highScores };
+                        newHS[type] = { score, date: new Date().toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) };
+                        setHighScores(newHS);
+                    }
+                    setState('finished');
+                }
+            }, [timeLeft, state]);
+
+            const check = () => {
+                const correct = question.num1 * question.num2;
+                const userNum = parseInt(answer);
+                const key = `${question.num1}x${question.num2}`;
+                const newScores = { ...scores };
+                const oldScore = newScores[key] || 50;
+                
+                if (userNum === correct) {
+                    setScore(score + 1); setFeedback('正確！太棒了！🎉');
+                    newScores[key] = Math.min(100, oldScore + 10);
+                    setTimeout(() => { setTotal(total + 1); genQuestion(); }, 800);
+                } else {
+                    setFeedback(`答錯了！正確答案是 ${correct}`);
+                    newScores[key] = Math.max(0, oldScore - 1);
+                    setTimeout(() => { setTotal(total + 1); genQuestion(); }, 1500);
+                }
+                setScores(newScores);
+                
+                // 檢查是否獲得新徽章
+                setTimeout(() => {
+                    const newBadges = getBadges();
+                    const oldBadgeKeys = Object.keys(badges);
+                    const newBadgeKeys = Object.keys(newBadges);
+                    
+                    newBadgeKeys.forEach(key => {
+                        if (!oldBadgeKeys.includes(key) || (badges[key] && newBadges[key].level > badges[key].level)) {
+                            // 新獲得徽章或升級徽章
+                            console.log(`獲得新徽章：${typeNames[key]} - ${newBadges[key].name}`);
+                        }
+                    });
+                }, 2000);
+            };
+
+            if (state === 'welcome') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-indigo-400 via-purple-400 to-pink-400 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full">
+                            <div className="text-center mb-8">
+                                <div className="text-yellow-500 mx-auto mb-4 animate-pulse"><Icon type="star" className="w-20 h-20 mx-auto" /></div>
+                                <h1 className="text-4xl font-bold text-purple-600 mb-2">熊樂樂九九乘法</h1>
+                                <h2 className="text-2xl font-bold text-pink-600 mb-2">練習遊戲</h2>
+                                <p className="text-gray-600 text-sm">個人化學習系統</p>
+                            </div>
+                            <div className="mb-6">
+                                <label className="block text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2"><Icon type="user" className="w-5 h-5" /> 請輸入你的名字</label>
+                                <input type="text" value={tempName} onChange={e => setTempName(e.target.value)} onKeyPress={e => e.key === 'Enter' && tempName.trim() && (setName(tempName.trim()), setState('setup'))} placeholder="輸入名字..." className="w-full text-xl px-4 py-3 border-2 border-purple-300 rounded-xl focus:outline-none focus:border-purple-500" autoFocus />
+                            </div>
+                            <button onClick={() => tempName.trim() && (setName(tempName.trim()), setState('setup'))} disabled={!tempName.trim()} className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xl font-bold py-4 rounded-xl hover:scale-105 transition-transform disabled:opacity-50 shadow-lg mb-3">開始使用</button>
+                            <button onClick={() => setShowHelp(true)} className="w-full bg-gray-100 text-gray-700 text-base font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors">📖 使用說明</button>
+                        </div>
+
+                        {/* 使用說明彈窗 */}
+                        {showHelp && (
+                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setShowHelp(false)}>
+                                <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                                    <h2 className="text-3xl font-bold text-purple-600 mb-4 text-center">📖 使用說明</h2>
+                                    
+                                    <div className="mb-6">
+                                        <h3 className="text-xl font-bold text-gray-800 mb-2">軟體名稱</h3>
+                                        <p className="text-gray-700">熊樂樂九九乘法練習 / 數學遊戲小程式 / 熊樂樂原創</p>
+                                    </div>
+
+                                    <div className="mb-6">
+                                        <h3 className="text-xl font-bold text-gray-800 mb-3">使用方式</h3>
+                                        <ol className="list-decimal list-inside space-y-2 text-gray-700">
+                                            <li>登入時請取一個帳號名稱</li>
+                                            <li>使用紀錄和學習狀況分析會記錄在帳號上</li>
+                                        </ol>
+                                    </div>
+
+                                    <div className="mb-6">
+                                        <h3 className="text-xl font-bold text-gray-800 mb-3">說明</h3>
+                                        <div className="space-y-4 text-gray-700">
+                                            <div>
+                                                <span className="font-semibold">1. 分區練習設計：</span>
+                                                <p className="ml-4 mt-1">依照九九乘法學習方式，區分不同數字或不同類型的練習區塊，每個區塊分開紀錄最高成績，配合學童的學習步驟。</p>
+                                            </div>
+                                            <div>
+                                                <span className="font-semibold">2. 計分與獎勵機制：</span>
+                                                <p className="ml-4 mt-1">九九乘法總共有81題題目，每個題目以50分為起點，答對一次加10分，答錯一次扣1分。每個題目達到80分、90分、100分時，依序有不同的獎勵徽章回饋（⭐優秀獎、🏅精通獎、💯滿分獎）。</p>
+                                            </div>
+                                            <div>
+                                                <span className="font-semibold">3. 智能出題系統：</span>
+                                                <p className="ml-4 mt-1">答錯的題目由系統記錄，出題時增加錯誤題目的出題機率，讓九九乘法練習程式能配合個人學習曲線進行精熟練習，提高整體的精熟率。</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-6 text-center">
+                                        <p className="text-gray-700 font-semibold mb-2">歡迎光臨熊樂樂家庭學院</p>
+                                        <a href="https://lelelearning.blogspot.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline break-all text-sm">
+                                            https://lelelearning.blogspot.com/
+                                        </a>
+                                    </div>
+
+                                    <button onClick={() => setShowHelp(false)} className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xl font-bold py-4 rounded-xl hover:scale-105 transition-transform shadow-lg">關閉說明</button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            if (state === 'setup') {
+                const types = [
+                    { value: 'all', label: '全部題目', icon: '🎯' },
+                    { value: '2', label: '2的倍數', icon: '2️⃣' }, { value: '3', label: '3的倍數', icon: '3️⃣' },
+                    { value: '4', label: '4的倍數', icon: '4️⃣' }, { value: '5', label: '5的倍數', icon: '5️⃣' },
+                    { value: '6', label: '6的倍數', icon: '6️⃣' }, { value: '7', label: '7的倍數', icon: '7️⃣' },
+                    { value: '8', label: '8的倍數', icon: '8️⃣' }, { value: '9', label: '9的倍數', icon: '9️⃣' },
+                    { value: 'even', label: '偶數', icon: '🔢' }, { value: '235', label: '2,3,5', icon: '⭐' }
+                ];
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-purple-400 via-pink-400 to-red-400 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-2xl w-full">
+                            <div className="text-center mb-8"><h2 className="text-3xl font-bold text-purple-600 mb-2">歡迎，{name}！</h2><p className="text-gray-600">準備開始練習</p></div>
+                            <div className="mb-6">
+                                <label className="block text-lg font-bold text-gray-700 mb-3">📝 選擇練習題型</label>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    {types.map(t => (
+                                        <button key={t.value} onClick={() => setType(t.value)} className={`p-3 rounded-xl font-bold transition-all ${type === t.value ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white scale-105 shadow-lg' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                                            <div className="flex items-center justify-center gap-1 mb-1">
+                                                <span className="text-2xl">{t.icon}</span>
+                                                {badges[t.value] && <span className="text-2xl">{badges[t.value].badge}</span>}
+                                            </div>
+                                            <div className="text-sm">{t.label}</div>
+                                            {highScores[t.value] && <div className="text-xs mt-1 opacity-80">最高：{highScores[t.value].score}題</div>}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="mb-6">
+                                <label className="block text-lg font-bold text-gray-700 mb-3 flex items-center gap-2"><Icon type="clock" className="w-5 h-5" /> 選擇時間</label>
+                                <div className="grid grid-cols-4 gap-3">{[30, 60, 90, 120].map(t => (<button key={t} onClick={() => setTimeLimit(t)} className={`p-4 rounded-xl font-bold text-lg transition-all ${timeLimit === t ? 'bg-blue-600 text-white scale-105' : 'bg-gray-100 text-gray-700'}`}>{t}秒</button>))}</div>
+                            </div>
+                            <div className="space-y-3">
+                                <button onClick={start} className="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white text-xl font-bold py-4 rounded-xl hover:scale-105 transition-transform shadow-lg flex items-center justify-center gap-2"><Icon type="play" /> 開始遊戲</button>
+                                <button onClick={() => setState('records')} className="w-full bg-gradient-to-r from-orange-500 to-yellow-500 text-white text-xl font-bold py-4 rounded-xl hover:scale-105 transition-transform shadow-lg flex items-center justify-center gap-2"><Icon type="chart" /> 查看紀錄</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (state === 'playing') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-lg w-full">
+                            <div className="flex justify-between items-center mb-8">
+                                <div className="bg-blue-100 px-4 py-2 rounded-full"><span className="text-blue-700 font-bold text-lg">{name}: {score}題</span></div>
+                                <div className={`px-4 py-2 rounded-full font-bold text-lg flex items-center gap-1 ${timeLeft <= 10 ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-green-100 text-green-700'}`}><Icon type="clock" className="w-5 h-5" /> {timeLeft}秒</div>
+                            </div>
+                            <div className="text-center mb-2">
+                                <div className="text-sm text-gray-600 mb-4">題型：{typeNames[type]}</div>
+                                <div className="text-6xl font-bold mb-6 flex items-center justify-center gap-4">
+                                    <span className="text-purple-600">{question.num1}</span><span className="text-pink-600">×</span>
+                                    <span className="text-purple-600">{question.num2}</span><span className="text-pink-600">=</span><span className="text-blue-600">?</span>
+                                </div>
+                                <input type="number" value={answer} onChange={e => setAnswer(e.target.value)} onKeyPress={e => e.key === 'Enter' && answer && check()} className="text-4xl font-bold text-center w-32 px-4 py-3 border-4 border-purple-300 rounded-xl focus:outline-none focus:border-purple-500" autoFocus />
+                                <button onClick={check} disabled={!answer} className="mt-6 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xl font-bold py-4 px-12 rounded-xl hover:scale-105 transition-transform disabled:opacity-50 shadow-lg">提交答案</button>
+                            </div>
+                            {feedback && <div className={`text-center text-2xl font-bold py-4 px-6 rounded-xl ${feedback.includes('正確') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{feedback}</div>}
+                        </div>
+                    </div>
+                );
+            }
+
+            if (state === 'finished') {
+                const acc = total > 0 ? Math.round((score / total) * 100) : 0;
+                const curr = highScores[type];
+                const isNew = !curr || score > curr.score;
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-yellow-400 via-orange-400 to-red-400 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
+                            <Icon type="trophy" className="w-20 h-20 text-yellow-500 mx-auto mb-4" />
+                            <h2 className="text-4xl font-bold text-purple-600 mb-2">遊戲結束！</h2>
+                            <p className="text-xl text-gray-600 mb-2">{name} 的成績</p>
+                            <p className="text-sm text-gray-500 mb-6">題型：{typeNames[type]}</p>
+                            {isNew && score > 0 && <div className="bg-yellow-100 border-2 border-yellow-400 rounded-xl p-4 mb-6 animate-pulse"><p className="text-yellow-800 font-bold text-xl">🎉 新紀錄！🎉</p></div>}
+                            <div className="space-y-4 mb-8">
+                                <div className="bg-purple-100 p-4 rounded-xl"><p className="text-gray-600 text-lg">本次答對</p><p className="text-4xl font-bold text-purple-600">{score} 題</p></div>
+                                <div className="bg-blue-100 p-4 rounded-xl"><p className="text-gray-600 text-lg">總題數</p><p className="text-4xl font-bold text-blue-600">{total} 題</p></div>
+                                <div className="bg-green-100 p-4 rounded-xl"><p className="text-gray-600 text-lg">正確率</p><p className="text-4xl font-bold text-green-600">{acc}%</p></div>
+                                <div className="bg-orange-100 p-4 rounded-xl">
+                                    <p className="text-gray-600 text-lg">此題型最高紀錄</p>
+                                    <p className="text-4xl font-bold text-orange-600">{curr ? curr.score : score} 題</p>
+                                    {curr && <p className="text-xs text-gray-600 mt-2 flex items-center justify-center gap-1"><Icon type="calendar" className="w-4 h-4" />{curr.date}</p>}
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <button onClick={start} className="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white text-xl font-bold py-4 rounded-xl hover:scale-105 transition-transform shadow-lg">再玩一次</button>
+                                <button onClick={() => setState('records')} className="w-full bg-gradient-to-r from-orange-500 to-yellow-500 text-white text-xl font-bold py-4 rounded-xl hover:scale-105 transition-transform shadow-lg">查看紀錄</button>
+                                <button onClick={() => setState('setup')} className="w-full bg-gray-200 text-gray-700 text-xl font-bold py-4 rounded-xl hover:bg-gray-300 transition-colors">返回</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (state === 'records') {
+                const weak = Object.entries(scores).sort((a, b) => a[1] - b[1]).slice(0, 10);
+                const types = [
+                    { value: 'all', label: '全部題目', icon: '🎯' },
+                    { value: '2', label: '2的倍數', icon: '2️⃣' }, { value: '3', label: '3的倍數', icon: '3️⃣' },
+                    { value: '4', label: '4的倍數', icon: '4️⃣' }, { value: '5', label: '5的倍數', icon: '5️⃣' },
+                    { value: '6', label: '6的倍數', icon: '6️⃣' }, { value: '7', label: '7的倍數', icon: '7️⃣' },
+                    { value: '8', label: '8的倍數', icon: '8️⃣' }, { value: '9', label: '9的倍數', icon: '9️⃣' },
+                    { value: 'even', label: '偶數的倍數', icon: '🔢' }, { value: '235', label: '2,3,5的倍數', icon: '⭐' }
+                ];
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-cyan-400 via-blue-400 to-purple-400 p-4 overflow-y-auto">
+                        <div className="max-w-4xl mx-auto py-8">
+                            <div className="bg-white rounded-3xl shadow-2xl p-8 mb-6">
+                                <h2 className="text-4xl font-bold text-purple-600 mb-2 text-center">{name} 的練習紀錄</h2>
+                                <p className="text-center text-gray-600 mb-6">完整學習記錄</p>
+                                
+                                {/* 獎勵徽章展示 */}
+                                {Object.keys(badges).length > 0 && (
+                                    <div className="mb-8">
+                                        <h3 className="text-2xl font-bold text-green-600 mb-4 flex items-center gap-2">
+                                            🎖️ 獲得的獎勵徽章
+                                        </h3>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                            {Object.entries(badges).map(([typeVal, badge]) => (
+                                                <div key={typeVal} className="bg-gradient-to-br from-green-50 to-emerald-100 border-2 border-green-300 rounded-xl p-4 text-center shadow-lg">
+                                                    <div className="text-5xl mb-2">{badge.badge}</div>
+                                                    <div className="font-bold text-gray-800 text-sm">{typeNames[typeVal]}</div>
+                                                    <div className="text-xs text-green-700 font-semibold mt-1">{badge.name}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-4 text-center text-sm text-gray-600">
+                                            <div className="flex justify-center gap-4 flex-wrap">
+                                                <span>⭐ 優秀獎：全部80分以上</span>
+                                                <span>🏅 精通獎：全部90分以上</span>
+                                                <span>💯 滿分獎：全部100分</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                <div className="mb-8">
+                                    <h3 className="text-2xl font-bold text-amber-600 mb-4 flex items-center gap-2"><Icon type="trophy" /> 各題型最高分紀錄</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {types.map(t => {
+                                            const r = highScores[t.value];
+                                            return (
+                                                <div key={t.value} className={`p-4 rounded-xl border-2 ${r ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'}`}>
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-2"><span className="text-2xl">{t.icon}</span><span className="font-bold text-gray-800">{t.label}</span></div>
+                                                        <div className="text-right">
+                                                            {r ? (<><div className="text-2xl font-bold text-amber-600">{r.score} 題</div><div className="text-xs text-gray-600 flex items-center gap-1 justify-end mt-1"><Icon type="calendar" className="w-3 h-3" />{r.date}</div></>) : (<div className="text-sm text-gray-400">尚無紀錄</div>)}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div className="mb-8">
+                                    <h3 className="text-2xl font-bold text-red-600 mb-4 flex items-center gap-2"><Icon type="down" /> 需要加強 (最低10題)</h3>
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                        {weak.map(([q, s]) => {
+                                            const [n1, n2] = q.split('x');
+                                            return (<div key={q} className="bg-red-50 border-2 border-red-300 rounded-xl p-3 text-center"><div className="text-xl font-bold">{n1} × {n2}</div><div className="text-sm text-red-600 font-semibold">{s} 分</div></div>);
+                                        })}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-bold text-blue-600 mb-4 flex items-center gap-2"><Icon type="chart" /> 完整九九乘法表</h3>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse">
+                                            <thead><tr className="bg-gray-100"><th className="border-2 border-gray-300 p-2">×</th>{[1,2,3,4,5,6,7,8,9].map(n => <th key={n} className="border-2 border-gray-300 p-2">{n}</th>)}</tr></thead>
+                                            <tbody>
+                                                {[1,2,3,4,5,6,7,8,9].map(i => (
+                                                    <tr key={i}><td className="border-2 border-gray-300 p-2 bg-gray-100 font-bold">{i}</td>
+                                                    {[1,2,3,4,5,6,7,8,9].map(j => {
+                                                        const s = scores[`${i}x${j}`] || 50;
+                                                        const bg = s >= 80 ? 'bg-green-100' : s >= 60 ? 'bg-yellow-100' : s >= 40 ? 'bg-orange-100' : 'bg-red-100';
+                                                        return <td key={j} className={`border-2 border-gray-300 p-2 text-center ${bg}`}><div className="text-sm font-semibold">{s}</div></td>;
+                                                    })}</tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div className="flex justify-center gap-4 mt-4 text-sm flex-wrap">
+                                        <div className="flex items-center gap-2"><div className="w-6 h-6 bg-green-100 border"></div><span>80+</span></div>
+                                        <div className="flex items-center gap-2"><div className="w-6 h-6 bg-yellow-100 border"></div><span>60-79</span></div>
+                                        <div className="flex items-center gap-2"><div className="w-6 h-6 bg-orange-100 border"></div><span>40-59</span></div>
+                                        <div className="flex items-center gap-2"><div className="w-6 h-6 bg-red-100 border"></div><span>0-39</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <button onClick={() => setState('setup')} className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xl font-bold py-4 rounded-xl hover:scale-105 transition-transform shadow-lg">返回主選單</button>
+                        </div>
+                    </div>
+                );
+            }
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
